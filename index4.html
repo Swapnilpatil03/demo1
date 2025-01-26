@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Ambulance Tracking</title>
+    <style>
+        #map { height: 100%; width: 100%; }
+        body, html { margin: 0; padding: 0; height: 100%; }
+        .traffic-light {
+            position: absolute;
+            top: 10px; left: 10px;
+            padding: 10px;
+            background: white; border: 1px solid black;
+            font-size: 16px; z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="traffic-light" id="traffic-light">Current Green Signal: None</div>
+    <div id="map"></div>
+    <script>
+        let map;
+        let ambulanceMarkers = [];
+        const intersection = { lat: 18.480789, lng: 73.872336 }; // Intersection coordinates
+        const ambulanceData = [
+        // {
+        //         id: 5,
+        //         path: [
+        //             { lat: 18.480412, lng: 73.872302}
+        //         ], // Path for Ambulance 1
+        //         currentIndex: 0,
+        //     },
+            {
+                id: 1,
+                path: [
+                    { lat: 18.479327, lng: 73.872739}
+                ], // Path for Ambulance 1
+                currentIndex: 0,
+            },
+            {
+                id: 2,
+                path: [
+                    { lat: 18.480707, lng: 73.871584 }
+                ], // Path for Ambulance 2
+                currentIndex: 0,
+            },
+            {
+                id: 3,
+                path: [
+                    { lat: 18.481463, lng: 73.872201 }
+                ], // Path for Ambulance 2
+                currentIndex: 0,
+            },
+            {
+                id: 4,
+                path: [
+                    { lat: 18.480823, lng: 73.873189 }
+                ], // Path for Ambulance 2
+                currentIndex: 0,
+            },
+        ];
+
+        function initMap() {
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: intersection,
+                zoom: 17,
+            });
+
+            const ambulanceIcon = {
+                url: "image.png",
+                scaledSize: new google.maps.Size(50, 50),
+            };
+
+            // Create markers for ambulances
+            ambulanceData.forEach((ambulance, index) => {
+                const marker = new google.maps.Marker({
+                    position: ambulance.path[0],
+                    map: map,
+                    icon: ambulanceIcon,
+                    title: `Ambulance ${ambulance.id}`,
+                });
+                ambulanceMarkers.push(marker);
+            });
+
+            // Simulate live updates
+            simulateLiveUpdates();
+        }
+
+        // Function to calculate bearing between two coordinates
+        function calculateBearing(coord1, coord2) {
+            const lat1 = (coord1.lat * Math.PI) / 180;
+            const lat2 = (coord2.lat * Math.PI) / 180;
+            const deltaLng = ((coord2.lng - coord1.lng) * Math.PI) / 180;
+
+            const y = Math.sin(deltaLng) * Math.cos(lat2);
+            const x =
+                Math.cos(lat1) * Math.sin(lat2) -
+                Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
+            const bearing = (Math.atan2(y, x) * 180) / Math.PI;
+
+            // Normalize bearing to 0-360 degrees
+            return (bearing + 360) % 360;
+        }
+
+        // Function to check if two ambulances are on parallel roads
+        function areParallel(coord1, coord2) {
+            const intersectionLat = intersection.lat;
+            const intersectionLng = intersection.lng;
+
+            const bearing1 = calculateBearing({ lat: intersectionLat, lng: intersectionLng }, coord1);
+            const bearing2 = calculateBearing({ lat: intersectionLat, lng: intersectionLng }, coord2);
+
+            console.log(`Bearing 1: ${bearing1}, Bearing 2: ${bearing2}`); // Debugging
+
+            // Check if bearings are approximately equal or opposite
+            const tolerance = 5;
+            return (
+                Math.abs(bearing1 - bearing2) <= tolerance ||
+                Math.abs(Math.abs(bearing1 - bearing2) - 180) <= tolerance
+            );
+        }
+
+        // Function to decide green signal
+        function updateTrafficSignal() {
+    // Calculate average distances for parallel roads
+    const acAmbulances = ambulanceData.filter((ambulance, index) => index % 2 === 0); // Roads A and C
+    const bdAmbulances = ambulanceData.filter((ambulance, index) => index % 2 !== 0); // Roads B and D
+
+    const acAvgDistance = acAmbulances.reduce((sum, ambulance, index) => {
+        const position = ambulanceMarkers[index * 2].getPosition().toJSON();
+        return sum + calculateDistance(position, intersection);
+    }, 0) / acAmbulances.length;
+
+    const bdAvgDistance = bdAmbulances.reduce((sum, ambulance, index) => {
+        const position = ambulanceMarkers[index * 2 + 1].getPosition().toJSON();
+        return sum + calculateDistance(position, intersection);
+    }, 0) / bdAmbulances.length;
+
+    // Decide which roads to give green signal
+    if (acAvgDistance <= bdAvgDistance) {
+        document.getElementById("traffic-light").innerText = 
+            `Green Signal: Roads A and C (Average Distance: ${acAvgDistance.toFixed(2)}m)`;
+    } else {
+        document.getElementById("traffic-light").innerText = 
+            `Green Signal: Roads B and D (Average Distance: ${bdAvgDistance.toFixed(2)}m)`;
+    }
+}
+
+
+        // Function to calculate distance
+        function calculateDistance(coord1, coord2) {
+            const R = 6371e3; // Earth radius in meters
+            const lat1 = (coord1.lat * Math.PI) / 180;
+            const lat2 = (coord2.lat * Math.PI) / 180;
+            const deltaLat = ((coord2.lat - coord1.lat) * Math.PI) / 180;
+            const deltaLng = ((coord2.lng - coord1.lng) * Math.PI) / 180;
+
+            const a =
+                Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+                Math.cos(lat1) * Math.cos(lat2) *
+                Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // Function to simulate live updates
+        function simulateLiveUpdates() {
+            const updateInterval = 2000; // 2 seconds
+
+            setInterval(() => {
+                ambulanceData.forEach((ambulance, index) => {
+                    ambulance.currentIndex =
+                        (ambulance.currentIndex + 1) % ambulance.path.length;
+                    const newPosition =
+                        ambulance.path[ambulance.currentIndex];
+                    ambulanceMarkers[index].setPosition(newPosition);
+                });
+
+                updateTrafficSignal();
+            }, updateInterval);
+        }
+
+        window.onload = initMap;
+    </script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCdMHEXrshZNMfXZq2t_pdGuONCMfeMYQI"></script>
+</body>
+</html>
